@@ -1,0 +1,140 @@
+path = '../input/glass/glass.csv'
+df = pd.read_csv(path)
+df.head()
+RI	Na	Mg	Al	Si	K	Ca	Ba	Fe	Type
+0	1.52101	13.64	4.49	1.10	71.78	0.06	8.75	0.0	0.0	1
+1	1.51761	13.89	3.60	1.36	72.73	0.48	7.83	0.0	0.0	1
+2	1.51618	13.53	3.55	1.54	72.99	0.39	7.78	0.0	0.0	1
+3	1.51766	13.21	3.69	1.29	72.61	0.57	8.22	0.0	0.0	1
+4	1.51742	13.27	3.62	1.24	73.08	0.55	8.07	0.0	0.0	1
+features = df.drop('Type', axis=1)
+labels = df['Type'].values
+labels = labels.reshape(len(labels), 1)
+Features described
+features.describe().T
+count	mean	std	min	25%	50%	75%	max
+RI	214.0	1.518365	0.003037	1.51115	1.516523	1.51768	1.519157	1.53393
+Na	214.0	13.407850	0.816604	10.73000	12.907500	13.30000	13.825000	17.38000
+Mg	214.0	2.684533	1.442408	0.00000	2.115000	3.48000	3.600000	4.49000
+Al	214.0	1.444907	0.499270	0.29000	1.190000	1.36000	1.630000	3.50000
+Si	214.0	72.650935	0.774546	69.81000	72.280000	72.79000	73.087500	75.41000
+K	214.0	0.497056	0.652192	0.00000	0.122500	0.55500	0.610000	6.21000
+Ca	214.0	8.956963	1.423153	5.43000	8.240000	8.60000	9.172500	16.19000
+Ba	214.0	0.175047	0.497219	0.00000	0.000000	0.00000	0.000000	3.15000
+Fe	214.0	0.057009	0.097439	0.00000	0.000000	0.00000	0.100000	0.51000
+Standardize the features
+scaler = StandardScaler()
+features = scaler.fit_transform(features)
+Merge the dataset
+dataset = np.append(features, labels, axis=1).tolist()
+Folds 
+def kfold(dataset, n_folds):
+    dataset_split = list()
+    dataset_copy = list(dataset)
+    fold_size = int(len(dataset) / n_folds)
+    
+    for i in range(n_folds):
+        fold = list()
+        while len(fold) < fold_size:
+            index = randrange(len(dataset_copy))
+            fold.append(dataset_copy.pop(index))
+        dataset_split.append(fold)
+        
+    return dataset_split
+n_folds = 5
+
+folds = kfold(dataset, n_folds)
+Euclidean distance 
+In mathematics, the Euclidean distance between two points in Euclidean space is the length of a line segment between the two points. It can be calculated from the Cartesian coordinates of the points using the Pythagorean theorem, therefore occasionally being called the Pythagorean distance. These names come from the ancient Greek mathematicians Euclid and Pythagoras, although Euclid did not represent distances as numbers, and the connection from the Pythagorean theorem to distance calculation was not made until the 18th century.
+
+Reference: Wikipedia
+
+def euclidean_distance(row1, row2):
+    distance = 0.0
+    for i in range(len(row1)-1):
+        distance += (row1[i] - row2[i])**2
+    return sqrt(distance)
+Learning vector quantization 
+LVQ can be understood as a special case of an artificial neural network, more precisely, it applies a winner-take-all Hebbian learning-based approach. It is a precursor to self-organizing maps (SOM) and related to neural gas, and to the k-nearest neighbor algorithm (k-NN). LVQ was invented by Teuvo Kohonen.
+
+An LVQ system is represented by prototypes W = ( w ( i ) , . . . , w ( n ) ) which are defined in the feature space of observed data. In winner-take-all training algorithms one determines, for each data point, the prototype which is closest to the input according to a given distance measure. The position of this so-called winner prototype is then adapted, i.e. the winner is moved closer if it correctly classifies the data point or moved away if it classifies the data point incorrectly.
+
+An advantage of LVQ is that it creates prototypes that are easy to interpret for experts in the respective application domain. LVQ systems can be applied to multi-class classification problems in a natural way. It is used in a variety of practical applications. See the 'Bibliography on the Self-Organizing Map (SOM) and Learning Vector Quantization (LVQ)'.
+
+A key issue in LVQ is the choice of an appropriate measure of distance or similarity for training and classification. Recently, techniques have been developed which adapt a parameterized distance measure in the course of training the system, see e.g. (Schneider, Biehl, and Hammer, 2009) and references therein.
+
+Reference: Wikipedia
+
+def random_subset(train):
+    n_records = len(train)
+    n_features = len(train[0])
+    subsets = [train[randrange(n_records)][i] for i in range(n_features)]
+    return subsets
+Best match unit using euclidean distance
+def best_match(subsets, test_row):
+    distances = list()
+    
+    for subset in subsets:
+        dist = euclidean_distance(subset, test_row)
+        distances.append((subset, dist))
+        
+    distances.sort(key=lambda tup: tup[1])
+    return distances[0][0]
+Learning Vector Quantization training function
+def lvq(train_set, n_subsets, lrate, epochs):
+    subsets = [random_subset(train_set) for i in range(n_subsets)]
+
+    for epoch in range(epochs):
+        rate = lrate * (1.0-(epoch/float(epochs)))
+        
+        for row in train_set:
+            bmu = best_match(subsets, row)
+            
+            for i in range(len(row)-1):
+                error = row[i] - bmu[i]
+                if bmu[-1] == row[-1]:
+                    bmu[i] += rate * error
+                else:
+                    bmu[i] -= rate * error
+                    
+    return subsets
+Training 
+Accuracy function
+def accuracy(actual, predicted):
+    correct = 0
+    for i in range(len(actual)):
+        if actual[i] == predicted[i]:
+            correct += 1
+    return correct / float(len(actual)) * 100.0
+Train/Test dataset split
+def train_test_split(folds, fold):
+    train_set = list(folds)
+    train_set.remove(fold)
+    train_set = sum(train_set, [])
+    test_set = list()
+    return train_set, test_set
+Parameters
+lrate = 0.1
+epochs = 500
+n_subsets = 50
+Training
+scores = list()
+
+for fold in folds:
+    train_set, test_set = train_test_split(folds, fold)
+
+    for row in fold:
+        test_set.append(list(row))
+
+    subsets = lvq(train_set, n_subsets, lrate, epochs)
+    y_hat = list()
+    
+    for test_row in test_set:
+        output = best_match(subsets, test_row)[-1]
+        y_hat.append(output)
+    
+    y = [row[-1] for row in fold]
+    scores.append(accuracy(y, y_hat))
+Results
+print('Accuracy per fold: {:}'.format(scores))
+print('Max Accuracy: {:.3f}'.format(max(scores)))
